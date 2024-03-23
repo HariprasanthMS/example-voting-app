@@ -20,9 +20,10 @@ namespace Worker
                 var pgpassword = Environment.GetEnvironmentVariable("POSTGRES_PASSWORD");
                 var pgdbname = Environment.GetEnvironmentVariable("POSTGRES_DATABASE");
                 var pghost = Environment.GetEnvironmentVariable("POSTGRES_HOST");
-                var redis_url = Environment.GetEnvironmentVariable("REDIS_URL");
-                var pgsql = OpenDbConnection($"Server=db;Host={pghost};Username={pguser};Password={pgpassword};Database={pgdbname};");
-                var redisConn = OpenRedisConnection(redis_url);
+                var redis_host = Environment.GetEnvironmentVariable("REDIS_HOST");
+                string connectionString = $"Host={pghost};Database={pgdbname};User Id={pguser};Password={pgpassword};";
+                var pgsql = OpenDbConnection(connectionString);
+                var redisConn = OpenRedisConnection(redis_host);
                 var redis = redisConn.GetDatabase();
 
                 // Keep alive is not implemented in Npgsql yet. This workaround was recommended:
@@ -39,7 +40,7 @@ namespace Worker
                     // Reconnect redis if down
                     if (redisConn == null || !redisConn.IsConnected) {
                         Console.WriteLine("Reconnecting Redis");
-                        redisConn = OpenRedisConnection("redis");
+                        redisConn = OpenRedisConnection(redis_host);
                         redis = redisConn.GetDatabase();
                     }
                     string json = redis.ListLeftPopAsync("votes").Result;
@@ -51,7 +52,7 @@ namespace Worker
                         if (!pgsql.State.Equals(System.Data.ConnectionState.Open))
                         {
                             Console.WriteLine("Reconnecting DB");
-                            pgsql = OpenDbConnection($"Server=db;Username={pguser};Password={pgpassword};");
+                            pgsql = OpenDbConnection($"Host={pghost};Username={pguser};Password={pgpassword};Database={pgdbname};");
                         }
                         else
                         { // Normal +1 vote requested
@@ -73,7 +74,7 @@ namespace Worker
 
         private static NpgsqlConnection OpenDbConnection(string connectionString)
         {
-            NpgsqlConnection connection;
+            NpgsqlConnection connection = null;
 
             while (true)
             {
@@ -83,26 +84,51 @@ namespace Worker
                     connection.Open();
                     break;
                 }
-                catch (SocketException)
+                catch (SocketException ex)
                 {
-                    Console.Error.WriteLine("Waiting for db");
-                    Thread.Sleep(1000);
+                    Console.Error.WriteLine($"SocketException while trying to connect to DB: {ex.Message}");
+                    Thread.Sleep(1000); // Wait before retrying
                 }
-                catch (DbException)
+                catch (Npgsql.NpgsqlException ex)
                 {
-                    Console.Error.WriteLine("Waiting for db");
-                    Thread.Sleep(1000);
+                    // Catching PostgreSQL-specific exceptions for more detailed context
+                    Console.Error.WriteLine($"NpgsqlException while trying to connect to DB: {ex.Message}");
+                    if (ex.InnerException != null)
+                    {
+                        Console.Error.WriteLine($"Inner Exception: {ex.InnerException.Message}");
+                    }
+                    Thread.Sleep(1000); // Wait before retrying
+                }
+                catch (DbException ex)
+                {
+                    Console.Error.WriteLine($"DbException while trying to connect to DB: {ex.Message}");
+                    Thread.Sleep(1000); // Wait before retrying
+                }
+                catch (Exception ex)
+                {
+                    // Catch-all for any other unexpected exceptions
+                    Console.Error.WriteLine($"Unexpected exception while trying to connect to DB: {ex.Message}");
+                    return null; // Or consider re-throwing the exception after logging
                 }
             }
 
-            Console.Error.WriteLine("Connected to db");
-
-            var command = connection.CreateCommand();
-            command.CommandText = @"CREATE TABLE IF NOT EXISTS votes (
-                                        id VARCHAR(255) NOT NULL UNIQUE,
-                                        vote VARCHAR(255) NOT NULL
-                                    )";
-            command.ExecuteNonQuery();
+            if (connection != null)
+            {
+                try
+                {
+                    var command = connection.CreateCommand();
+                    command.CommandText = @"CREATE TABLE IF NOT EXISTS votes (
+                                                id VARCHAR(255) NOT NULL UNIQUE,
+                                                vote VARCHAR(255) NOT NULL
+                                            )";
+                    command.ExecuteNonQuery();
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error while trying to create 'votes' table: {ex.Message}");
+                    // Handle or log the error as needed
+                }
+            }
 
             return connection;
         }
