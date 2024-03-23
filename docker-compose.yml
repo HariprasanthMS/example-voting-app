@@ -20,22 +20,21 @@ services:
     volumes:
      - ./vote:/usr/local/app
     ports:
-      - "5000:80"
+      - "80:80"
 
   result:
     build: ./result
     # use nodemon rather than node for local dev
     entrypoint: nodemon --inspect=0.0.0.0 server.js
-    depends_on:
-      db:
-        condition: service_healthy 
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
+      PORT: 81
+      NODE_TLS_REJECT_UNAUTHORIZED: 0
     volumes:
       - ./result:/usr/local/app
     ports:
-      - "5001:80"
+      - "81:81"
       - "127.0.0.1:9229:9229"
 
   worker:
@@ -46,30 +45,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
-
-  redis:
-    image: redis:alpine
-    volumes:
-      - "./healthchecks:/healthchecks"
-    healthcheck:
-      test: /healthchecks/redis.sh
-      interval: "5s"
-    ports:
-      - "6379:6379"
-
-  db:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: "postgres"
-      POSTGRES_PASSWORD: "postgres"
-    volumes:
-      - "db-data:/var/lib/postgresql/data"
-      - "./healthchecks:/healthchecks"
-    healthcheck:
-      test: /healthchecks/postgres.sh
-      interval: "5s"
-    ports:
-      - "5432:5432"
 
   # this service runs once to seed the database with votes
   # it won't run unless you specify the "seed" profile
