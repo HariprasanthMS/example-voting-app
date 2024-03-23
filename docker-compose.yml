@@ -7,10 +7,11 @@ services:
     build: 
       context: ./vote
       target: dev
-    depends_on:
-      redis:
-        condition: service_healthy
-    healthcheck: 
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_URL: ${REDIS_URL}
+    healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost"]
       interval: 15s
       timeout: 5s
@@ -20,9 +21,6 @@ services:
      - ./vote:/usr/local/app
     ports:
       - "5000:80"
-    networks:
-      - front-tier
-      - back-tier
 
   result:
     build: ./result
@@ -31,25 +29,23 @@ services:
     depends_on:
       db:
         condition: service_healthy 
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
     volumes:
       - ./result:/usr/local/app
     ports:
       - "5001:80"
       - "127.0.0.1:9229:9229"
-    networks:
-      - front-tier
-      - back-tier
 
   worker:
     build:
       context: ./worker
-    depends_on:
-      redis:
-        condition: service_healthy 
-      db:
-        condition: service_healthy 
-    networks:
-      - back-tier
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
 
   redis:
     image: redis:alpine
@@ -58,8 +54,8 @@ services:
     healthcheck:
       test: /healthchecks/redis.sh
       interval: "5s"
-    networks:
-      - back-tier
+    ports:
+      - "6379:6379"
 
   db:
     image: postgres:15-alpine
@@ -72,8 +68,8 @@ services:
     healthcheck:
       test: /healthchecks/postgres.sh
       interval: "5s"
-    networks:
-      - back-tier
+    ports:
+      - "5432:5432"
 
   # this service runs once to seed the database with votes
   # it won't run unless you specify the "seed" profile
@@ -84,13 +80,7 @@ services:
     depends_on:
       vote:
         condition: service_healthy 
-    networks:
-      - front-tier
     restart: "no"
 
 volumes:
   db-data:
-
-networks:
-  front-tier:
-  back-tier:

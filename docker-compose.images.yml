@@ -12,9 +12,6 @@ services:
         condition: service_healthy 
     ports:
       - "5000:80"
-    networks:
-      - front-tier
-      - back-tier
 
   result:
     image: dockersamples/examplevotingapp_result
@@ -23,9 +20,6 @@ services:
         condition: service_healthy 
     ports:
       - "5001:80"
-    networks:
-      - front-tier
-      - back-tier
 
   worker:
     image: dockersamples/examplevotingapp_worker
@@ -34,8 +28,6 @@ services:
         condition: service_healthy 
       db:
         condition: service_healthy 
-    networks:
-      - back-tier
 
   redis:
     image: redis:alpine
@@ -44,8 +36,6 @@ services:
     healthcheck:
       test: /healthchecks/redis.sh
       interval: "5s"
-    networks:
-      - back-tier
 
   db:
     image: postgres:15-alpine
@@ -58,12 +48,6 @@ services:
     healthcheck:
       test: /healthchecks/postgres.sh
       interval: "5s"
-    networks:
-      - back-tier
 
 volumes:
   db-data:
-
-networks:
-  front-tier:
-  back-tier:
